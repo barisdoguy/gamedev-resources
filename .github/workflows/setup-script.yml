@@ -1,0 +1,68 @@
+name: Windows setup script
+
+on:
+  push:
+    branches: [main]
+    paths: ["setup/**", ".github/workflows/setup-script.yml"]
+  pull_request:
+    paths: ["setup/**", ".github/workflows/setup-script.yml"]
+  schedule:
+    - cron: "41 5 * * 1" # every Monday: catch winget packages that were renamed or removed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Parse, analyze and dry run (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\setup\windows\setup.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Host $_ }; exit 1 }
+          Write-Host 'No parse errors.'
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $results = Invoke-ScriptAnalyzer -Path setup/windows/setup.ps1 -Severity Warning, Error -ExcludeRule PSAvoidUsingWriteHost
+          $results | Format-Table -AutoSize -Wrap | Out-String -Width 200 | Write-Host
+          if ($results) { exit 1 }
+          Write-Host 'No analyzer findings.'
+
+      - name: Dry run with Windows PowerShell 5.1
+        shell: powershell
+        run: .\setup\windows\setup.ps1 -DryRun -GitName "CI" -GitEmail "ci@example.com"
+
+      - name: Dry run with PowerShell 7 and skipped groups
+        shell: pwsh
+        run: ./setup/windows/setup.ps1 -DryRun -Skip Engines, Art, PowerPlan
+
+  winget-ids:
+    name: Package IDs exist in the winget catalog
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check every Id against microsoft/winget-pkgs
+        run: |
+          git clone --quiet --filter=tree:0 --no-checkout --depth 1 https://github.com/microsoft/winget-pkgs /tmp/winget-pkgs
+          missing=0
+          for id in $(grep -oP "Id\s*=\s*'\K[^']+" setup/windows/setup.ps1); do
+            first=$(echo "${id:0:1}" | tr 'A-Z' 'a-z')
+            path="manifests/$first/$(echo "$id" | tr '.' '/')"
+            if git -C /tmp/winget-pkgs ls-tree -d --name-only HEAD "$path/" | grep -q .; then
+              echo "ok       $id"
+            else
+              echo "MISSING  $id"
+              missing=1
+            fi
+          done
+          exit $missing

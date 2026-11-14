@@ -19,6 +19,7 @@ Star counts were read from the GitHub API on **2026-11-14** and are rounded. To 
 - [Learn by reading code](#learn-by-reading-code)
 - [Other curated lists](#other-curated-lists)
 - [Outside GitHub](#outside-github)
+- [Windows workstation setup](#windows-workstation-setup)
 
 ## Engines and frameworks
 
@@ -155,6 +156,39 @@ Not on GitHub, or not public there, but part of the everyday toolset:
 - **NVIDIA Nsight Graphics and Nsight Systems.** GPU frame debugging and system-wide profiling: <https://developer.nvidia.com/nsight-graphics>
 - **Shadertoy.** Thousands of shaders to read and experiment with in the browser: <https://www.shadertoy.com>
 - **GPU Gems** (free online from NVIDIA): <https://developer.nvidia.com/gpugems/gpugems/foreword>
+
+## Windows workstation setup
+
+[`setup/windows/setup.ps1`](setup/windows/setup.ps1) turns a Windows PC into a game development workstation in one run:
+
+- **Toolchain:** Visual Studio 2022 with the C++ game and desktop workloads, Git with LFS, GitHub CLI, CMake, Ninja, LLVM/Clang, Python, PowerShell 7
+- **Editors and engines:** VS Code, Rider, Epic Games Launcher (Unreal Engine), Godot, Unity Hub
+- **GPU and profiling:** RenderDoc, PIX, Tracy
+- **Content:** Blender, Krita, Audacity, OBS Studio
+- **Windows settings:** Developer Mode, long paths, visible file extensions, a `C:\dev` workspace excluded from Defender scanning, High performance power plan
+- **Git and GitHub:** sensible defaults, an SSH key in the Windows ssh-agent, SSH-signed commits (tested before they are switched on), key uploaded to GitHub for sign-in and signing
+
+It skips anything already installed, so it is safe to run again. CI parses it, runs PSScriptAnalyzer, dry-runs it on Windows and checks every package Id against the winget catalog each week.
+
+Open PowerShell with **Run as administrator**, then download the script:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/barisdoguy/gamedev-resources/main/setup/windows/setup.ps1 -OutFile $env:TEMP\setup.ps1 -UseBasicParsing
+```
+
+See the plan without changing anything:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File $env:TEMP\setup.ps1 -DryRun
+```
+
+Run it (use your own name and your GitHub noreply email from <https://github.com/settings/emails>):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File $env:TEMP\setup.ps1 -GitName "Your Name" -GitEmail "12345+you@users.noreply.github.com"
+```
+
+Leave groups out with `-Skip`, for example `-Skip Engines,Art`. Available groups: `VisualStudio`, `Editors`, `Engines`, `GraphicsTools`, `Art`, `Utilities`, `WindowsSettings`, `DefenderExclusion`, `PowerPlan`, `GitHub`. A log is written to `%USERPROFILE%\gamedev-setup.log`.
 
 ## Star the whole list
 

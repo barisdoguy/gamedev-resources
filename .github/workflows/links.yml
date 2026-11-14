@@ -27,7 +27,7 @@ jobs:
         with:
           args: >-
             --no-progress --max-retries 3 --accept 200,429
-            --exclude shadertoy.com --exclude unrealengine.com --exclude developer.nvidia.com
+            --exclude shadertoy.com --exclude unrealengine.com --exclude developer.nvidia.com --exclude github.com/settings
             README.md
           fail: true
         env:
