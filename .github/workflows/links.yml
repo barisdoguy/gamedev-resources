@@ -1,0 +1,34 @@
+name: Links
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1" # every Monday: catch repositories that moved or were deleted
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Script lists every table entry
+        run: |
+          bash scripts/star-all.sh --dry-run | tee /tmp/repos.txt
+          test "$(tail -n +2 /tmp/repos.txt | wc -l)" -gt 50
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >-
+            --no-progress --max-retries 3 --accept 200,429
+            --exclude shadertoy.com --exclude unrealengine.com --exclude developer.nvidia.com
+            README.md
+          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
