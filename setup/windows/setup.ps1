@@ -112,7 +112,8 @@ function Write-Skipped([string]$Text) { Write-Host "    [skip] $Text" -Foregroun
 function Write-Planned([string]$Text) { Write-Host "    [plan] $Text" -ForegroundColor Magenta }
 function Write-Problem([string]$Text) { Write-Host "    [warn] $Text" -ForegroundColor Yellow }
 
-function Test-Skipped([string]$Group) { return $Skip -contains $Group }
+$SkippedGroups = @($Skip)
+function Test-Skipped([string]$Group) { return $SkippedGroups -contains $Group }
 
 # Runs a change unless -DryRun is set, and records failures instead of
 # stopping, so one broken step does not abort the whole setup.
