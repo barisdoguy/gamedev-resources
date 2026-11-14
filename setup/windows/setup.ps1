@@ -189,6 +189,25 @@ function Invoke-Git {
     }
 }
 
+# Finds an existing Visual Studio (Community, Professional or Enterprise, any
+# version, including previews) with vswhere, which ships with the VS Installer.
+# winget only recognises the exact package it would install, so without this
+# check a machine that already has Visual Studio gets a second, failing install.
+function Get-VisualStudioInstall {
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path $vswhere)) { return $null }
+
+    $name = @(& $vswhere -latest -prerelease -property displayName 2>$null) | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0 -or -not $name) { return $null }
+
+    $withGameWorkload = @(& $vswhere -latest -prerelease -property displayName `
+            -requires Microsoft.VisualStudio.Workload.NativeGame 2>$null) | Select-Object -First 1
+    return [pscustomobject]@{
+        Name            = $name
+        HasGameWorkload = [bool]$withGameWorkload
+    }
+}
+
 function Get-GitConfig([string]$Key) {
     $value = & git config --global --get $Key 2>$null
     if ($LASTEXITCODE -ne 0) { return $null }
@@ -224,13 +243,26 @@ foreach ($group in $Packages.Keys) {
         continue
     }
     Write-Section $group
+
+    if ($group -eq 'VisualStudio') {
+        $existingVs = Get-VisualStudioInstall
+        if ($existingVs) {
+            Write-Skipped "$($existingVs.Name) is already installed; not installing another copy"
+            if ($existingVs.HasGameWorkload) {
+                Write-Ok '"Game development with C++" workload is present'
+            }
+            else {
+                Write-Problem 'Add the "Game development with C++" and "Desktop development with C++" workloads:'
+                Write-Problem 'Start menu -> Visual Studio Installer -> Modify -> tick both -> Modify.'
+                $script:Failures.Add('Visual Studio C++ game workload')
+            }
+            continue
+        }
+    }
+
     foreach ($package in $Packages[$group]) {
         Install-WingetPackage $package
     }
-}
-if (-not (Test-Skipped 'VisualStudio') -and -not $DryRun) {
-    Write-Host '    Note: if Visual Studio was already installed, add the "Game development with C++"' -ForegroundColor DarkGray
-    Write-Host '    workload yourself in Visual Studio Installer -> Modify.' -ForegroundColor DarkGray
 }
 
 # --------------------------------------------------------------------------
