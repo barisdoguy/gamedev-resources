@@ -96,7 +96,6 @@ $Packages = [ordered]@{
     Utilities     = @(
         @{ Id = '7zip.7zip'; Name = '7-Zip' }
         @{ Id = 'voidtools.Everything'; Name = 'Everything (instant file search)' }
-        @{ Id = 'Microsoft.Sysinternals.ProcessExplorer'; Name = 'Process Explorer' }
     )
 }
 
@@ -138,8 +137,21 @@ function Sync-SessionPath {
     $env:Path = "$machine;$user"
 }
 
+# Runs a native command and returns its stdout and stderr as strings.
+# Windows PowerShell 5.1 turns redirected stderr into errors, which
+# $ErrorActionPreference = 'Stop' would make fatal; the inner scope avoids that.
+# Check $LASTEXITCODE afterwards.
+function Invoke-NativeQuiet {
+    $command = $args[0]
+    $commandArgs = @($args | Select-Object -Skip 1)
+    return & {
+        $ErrorActionPreference = 'Continue'
+        & $command @commandArgs 2>&1 | ForEach-Object { "$_" }
+    }
+}
+
 function Test-WingetInstalled([string]$Id) {
-    $null = & winget list --id $Id --exact --accept-source-agreements --disable-interactivity 2>&1
+    $null = Invoke-NativeQuiet winget list --id $Id --exact --accept-source-agreements --disable-interactivity
     return $LASTEXITCODE -eq 0
 }
 
@@ -209,9 +221,9 @@ function Get-VisualStudioInstall {
 }
 
 function Get-GitConfig([string]$Key) {
-    $value = & git config --global --get $Key 2>$null
+    $value = Invoke-NativeQuiet git config --global --get $Key
     if ($LASTEXITCODE -ne 0) { return $null }
-    return $value
+    return ($value -join '').Trim()
 }
 
 # --------------------------------------------------------------------------
@@ -298,7 +310,15 @@ else {
     # Only your own workspace is excluded; keep downloads out of it.
     Invoke-Change "Defender does not scan $Workspace" {
         New-Item -ItemType Directory -Force -Path $Workspace | Out-Null
-        Add-MpPreference -ExclusionPath $Workspace
+        try {
+            Add-MpPreference -ExclusionPath $Workspace
+        }
+        catch {
+            # Typical causes: another antivirus is active (Defender is then
+            # off or passive), or the PC is managed by an organisation.
+            throw ("Defender refused the exclusion ($($_.Exception.Message.Trim())). " +
+                "If you use another antivirus, add $Workspace as an exclusion there. This step is optional.")
+        }
     }
 }
 
@@ -397,11 +417,12 @@ else {
         $testRepo = Join-Path $env:TEMP ('git-sign-test-' + [guid]::NewGuid().ToString('N'))
         try {
             Invoke-Git init --quiet $testRepo
-            & git -C $testRepo commit --quiet --allow-empty -m 'signing test'
+            $gitOutput = (Invoke-NativeQuiet git -C $testRepo commit --quiet --allow-empty -m 'signing test') -join ' '
             if ($LASTEXITCODE -ne 0) {
                 & git config --global --unset commit.gpgsign
                 & git config --global --unset tag.gpgsign
-                throw 'signing did not work, so commit signing was turned off again'
+                throw ("signing did not work, so commit signing was turned off again. " +
+                    "Commits still work, just without the Verified badge. Git said: $gitOutput")
             }
         }
         finally {

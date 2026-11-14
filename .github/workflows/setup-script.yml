@@ -37,6 +37,31 @@ jobs:
           if ($results) { exit 1 }
           Write-Host 'No analyzer findings.'
 
+      # Windows PowerShell 5.1 turns redirected stderr into errors, which the
+      # script's ErrorActionPreference = 'Stop' would make fatal. Prove the
+      # helpers survive a failing native command with stderr output.
+      - name: Native command helpers under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile("$PWD\setup\windows\setup.ps1", [ref]$null, [ref]$null)
+          $wanted = 'Invoke-NativeQuiet', 'Get-GitConfig'
+          $defs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $wanted -contains $n.Name }, $true)
+          if (@($defs).Count -ne 2) { throw 'helper functions not found in setup.ps1' }
+          foreach ($d in $defs) { . ([scriptblock]::Create($d.Extent.Text)) }
+
+          $out = Invoke-NativeQuiet git --version
+          if ($LASTEXITCODE -ne 0 -or ($out -join ' ') -notmatch 'git version') { throw "git --version: $out" }
+
+          $out = Invoke-NativeQuiet git -C "$env:TEMP\no-such-folder" status
+          if ($LASTEXITCODE -eq 0) { throw 'expected a non-zero exit code' }
+          Write-Host "stderr captured without throwing: $out"
+
+          if ($null -ne (Get-GitConfig 'no.such.key')) { throw 'missing key should return $null' }
+          git config --global user.name 'CI Bot'
+          if ((Get-GitConfig 'user.name') -ne 'CI Bot') { throw 'Get-GitConfig did not read user.name' }
+          Write-Host 'Helpers OK'
+
       - name: Dry run with Windows PowerShell 5.1
         shell: powershell
         run: .\setup\windows\setup.ps1 -DryRun -GitName "CI" -GitEmail "ci@example.com"
